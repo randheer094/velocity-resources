@@ -6,8 +6,8 @@ Two things live here:
    `go/`) — drop the `.claude/` directory into your repo root.
 2. **Runtime prompts** consumed by the
    [velocity](https://github.com/randheer094/velocity) daemon
-   (`prompts/`) — fetched on startup so prompt edits ship without a
-   velocity rebuild. See [`prompts/README.md`](./prompts/README.md).
+   (`prompts/`) — loaded from a release tarball (or fetched live
+   from `main`) so prompt edits ship without a velocity rebuild.
 
 ## Templates
 
@@ -29,7 +29,7 @@ Each template ships with:
 - `skills/prepare-for-pr/SKILL.md` — the gate sequence to run
   before opening a PR.
 
-## Usage
+### Using a template
 
 Copy the `.claude/` directory from the template you want into the
 root of your project:
@@ -45,3 +45,97 @@ runbooks) lives in a `CLAUDE.md` at your repo root — the
 template's `.claude/CLAUDE.md` is purely a technical index and
 should stay that way. Tune `rules/*.md` and the pre-PR skill to
 match your stack.
+
+## Prompts
+
+Externalized LLM prompts and Jira / GitHub failure-comment
+templates for velocity. velocity loads `manifest.yaml` on startup,
+loads each referenced template, and renders them with Go's
+`text/template` at call sites.
+
+### Why
+
+- Prompts can be tuned without rebuilding velocity.
+- Prompt history lives in git — diffs, blame, and PR review apply.
+- Multiple velocity deployments can pin to a tag of this repo for
+  reproducibility, or float on `main` for live updates.
+
+### Layout
+
+```
+prompts/
+  manifest.yaml                    # index — id → path + placeholder schema
+  arch/plan.md                     # architect planning prompt
+  code/run.md                      # code runner (fresh sub-task) prompt
+  code/iterate.md                  # code iterate (existing PR) prompt
+  failure/jira.md                  # Jira comment for arch/code Run failures
+  failure/iterate_jira.md          # Jira comment for iterate failures
+  failure/iterate_pr.md            # GitHub PR comment for iterate failures
+```
+
+### Template format
+
+Templates use Go's [`text/template`](https://pkg.go.dev/text/template)
+syntax. Placeholders are referenced as `{{.FieldName}}`. The exact
+field set for each prompt is declared in `manifest.yaml` under
+`placeholders`.
+
+The renderer in velocity must:
+
+1. Load `manifest.yaml` (from a release tarball or live URL).
+2. For each entry, load the file at `path` (relative to
+   `manifest.yaml`).
+3. Parse with `text/template.New(id).Option("missingkey=error").Parse`.
+4. Cache the parsed template by `id`.
+5. On every render, pass a struct (or `map[string]any`) whose keys
+   match the placeholders for that prompt.
+
+`missingkey=error` is intentional — a typo in a placeholder name
+should fail loudly during render, not silently produce `<no value>`
+in a Jira comment.
+
+## Releases
+
+The `release` workflow (`.github/workflows/release.yml`) fires on
+any `v*` tag push. It validates that the tag's major version
+matches `prompts/manifest.yaml`'s `version:` field, then attaches
+three artifacts to a GitHub Release:
+
+- `velocity-resources-<tag>.tar.gz` — `go/`, `android/`, `prompts/`
+- `velocity-resources-<tag>.zip` — same trees
+- `SHA256SUMS` — checksums for both archives
+
+Cutting a release:
+
+```bash
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+Tag major versus manifest `version:` is enforced — `v1.x.x`
+requires `version: 1`, `v2.x.x` requires `version: 2`. Bumping
+the manifest version (a breaking placeholder-schema change) means
+the next tag must move to a new major.
+
+### Velocity deployment options
+
+- **Pinned (recommended for prod):** velocity downloads
+  `velocity-resources-<tag>.tar.gz` from the release page once at
+  startup, extracts it, and reads files locally.
+- **Live (dev / fast iteration):** velocity fetches each file from
+  `https://raw.githubusercontent.com/randheer094/velocity-resources/main/prompts/`
+  on startup. Prompt edits land on the next daemon restart with
+  no tag bump.
+
+Velocity should fall back to its bundled defaults if either path
+fails so the daemon stays bootable on a network hiccup.
+
+## Editing prompts
+
+1. Edit the relevant `.md` file.
+2. If you change the placeholder set, update `manifest.yaml` in
+   the same commit and bump `version` (and plan to cut a major
+   tag).
+3. Open a PR. Once merged to `main`, live deployments pick up the
+   change on the next restart; pinned deployments wait for the
+   next tagged release.
