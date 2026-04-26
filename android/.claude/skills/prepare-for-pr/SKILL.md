@@ -60,10 +60,27 @@ wrong, not the gate. Verify before running:
 
 ## Boot an emulator (only if connectedAndroidTest is needed)
 
+Reuse before creating. If `adb devices` already lists a booted
+emulator, skip this section entirely. Otherwise pick the most
+recently used AVD and boot it; only create a new one if none
+exist.
+
 ```bash
-android sdk install platform-tools "system-images;android-34;google_apis;x86_64"
-android avd create --profile pixel_6      # once
-android emulator --avd <name> &
+# Skip if an emulator is already booted.
+adb devices | awk 'NR>1 && $2=="device" && $1 ~ /^emulator-/' | grep -q . && exit 0
+
+# Pick the most recently modified existing AVD.
+avd=$(ls -t ~/.android/avd/*.ini 2>/dev/null | head -1 \
+        | xargs -I{} basename {} .ini)
+
+# Create one only if none exist.
+if [[ -z "$avd" ]]; then
+  android sdk install platform-tools "system-images;android-34;google_apis;x86_64"
+  android avd create --profile pixel_6
+  avd=$(ls -t ~/.android/avd/*.ini | head -1 | xargs -I{} basename {} .ini)
+fi
+
+android emulator --avd "$avd" &
 adb wait-for-device
 adb shell 'while [[ -z "$(getprop sys.boot_completed)" ]]; do sleep 1; done'
 ```
