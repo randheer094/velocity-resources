@@ -6,8 +6,8 @@ Two things live here:
    `go/`) — drop the `.claude/` directory into your repo root.
 2. **Runtime prompts** consumed by the
    [velocity](https://github.com/randheer094/velocity) daemon
-   (`prompts/`) — loaded from a release tarball (or fetched live
-   from `main`) so prompt edits ship without a velocity rebuild.
+   (`prompts/`) — loaded from a release tarball at setup time so
+   prompt edits ship without a velocity rebuild.
 
 ## Templates
 
@@ -57,8 +57,8 @@ loads each referenced template, and renders them with Go's
 
 - Prompts can be tuned without rebuilding velocity.
 - Prompt history lives in git — diffs, blame, and PR review apply.
-- Multiple velocity deployments can pin to a tag of this repo for
-  reproducibility, or float on `main` for live updates.
+- Each velocity deployment pins to a release tag and updates on
+  its own schedule via an explicit user-driven command.
 
 ### Layout
 
@@ -82,7 +82,7 @@ field set for each prompt is declared in `manifest.yaml` under
 
 The renderer in velocity must:
 
-1. Load `manifest.yaml` (from a release tarball or live URL).
+1. Load `manifest.yaml` from the extracted release tarball.
 2. For each entry, load the file at `path` (relative to
    `manifest.yaml`).
 3. Parse with `text/template.New(id).Option("missingkey=error").Parse`.
@@ -117,25 +117,37 @@ requires `version: 1`, `v2.x.x` requires `version: 2`. Bumping
 the manifest version (a breaking placeholder-schema change) means
 the next tag must move to a new major.
 
-### Velocity deployment options
+### Velocity loading model
 
-- **Pinned (recommended for prod):** velocity downloads
-  `velocity-resources-<tag>.tar.gz` from the release page once at
-  startup, extracts it, and reads files locally.
-- **Live (dev / fast iteration):** velocity fetches each file from
-  `https://raw.githubusercontent.com/randheer094/velocity-resources/main/prompts/`
-  on startup. Prompt edits land on the next daemon restart with
-  no tag bump.
+velocity is pinned to one release tag at a time and downloads the
+artifact for that specific version. There is no fallback, no
+bundled defaults, and no network call on the daemon hot path.
 
-Velocity should fall back to its bundled defaults if either path
-fails so the daemon stays bootable on a network hiccup.
+- **Setup (one-time):** the user supplies a version (e.g.
+  `v1.0.0`) during `velocity setup`. The daemon downloads
+  `velocity-resources-<tag>.tar.gz` from the matching GitHub
+  Release, verifies its checksum against `SHA256SUMS`, and
+  extracts it under the velocity config dir. Setup fails — and
+  refuses to write a partial config — if the download or
+  checksum verification fails. The user fixes the network or
+  picks a reachable version and re-runs setup.
+- **Daemon startup:** velocity reads prompts from the local
+  extracted copy. No network calls. If the cache is missing or
+  unreadable the daemon refuses to start and points the user at
+  setup.
+- **Updating:** a separate command (e.g.
+  `velocity update-prompts <tag>`) downloads, verifies, and
+  swaps in the requested release. Routine minor / patch bumps
+  within the current major are non-breaking. A major bump
+  (placeholder-schema change) usually requires a velocity binary
+  update too — the command should warn the user and require
+  explicit confirmation before applying it.
 
 ## Editing prompts
 
 1. Edit the relevant `.md` file.
 2. If you change the placeholder set, update `manifest.yaml` in
-   the same commit and bump `version` (and plan to cut a major
-   tag).
-3. Open a PR. Once merged to `main`, live deployments pick up the
-   change on the next restart; pinned deployments wait for the
-   next tagged release.
+   the same commit and bump the major `version` — that gates
+   when downstream velocity deployments can pick the change up.
+3. Open a PR. After merge, cut a tagged release; deployments
+   pull it in via `velocity update-prompts <tag>`.
