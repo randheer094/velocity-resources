@@ -17,9 +17,11 @@ stack.
 Each template ships with:
 
 - `CLAUDE.md` — entry point Claude reads first; lists build/test
-  commands and links to the rest.
-- `rules/conventions.md` — architecture, testing, style, and
-  layout rules to follow on every change.
+  commands and indexes the rule files. Pure technical guide; no
+  project-specific content.
+- `rules/*.md` — per-topic rule files (architecture, data,
+  testing, security, build, …). Claude reads only the ones
+  relevant to the current change instead of a single monolith.
 - `skills/prepare-for-pr/SKILL.md` — the gate sequence to run
   before opening a PR.
 
@@ -34,6 +36,8 @@ cp -r android/.claude /path/to/your/android-project/
 cp -r go/.claude /path/to/your/go-project/
 ```
 
-Then edit `CLAUDE.md` to replace the placeholder project
-description, and tune the conventions and pre-PR skill to match
-your codebase.
+Project-specific context (what this app does, owners, key URLs,
+runbooks) lives in a `CLAUDE.md` at your repo root — the
+template's `.claude/CLAUDE.md` is purely a technical index and
+should stay that way. Tune `rules/*.md` and the pre-PR skill to
+match your stack.
