@@ -108,14 +108,16 @@ three artifacts to a GitHub Release:
 Cutting a release:
 
 ```bash
-git tag v1.0.0
-git push origin v1.0.0
+git tag v0.6.0
+git push origin v0.6.0
 ```
 
-Tag major versus manifest `version:` is enforced — `v1.x.x`
-requires `version: 1`, `v2.x.x` requires `version: 2`. Bumping
-the manifest version (a breaking placeholder-schema change) means
-the next tag must move to a new major.
+Tag major versus manifest `version:` is enforced — `v0.x.x`
+requires `version: 0`, `v1.x.x` requires `version: 1`, and so on.
+The manifest currently sits at `version: 0` — the schema is
+pre-stable, so breaking placeholder changes are allowed within
+the 0.x line. The first stable release will move both the
+manifest and the tag to `1`.
 
 ### Velocity loading model
 
@@ -124,7 +126,7 @@ artifact for that specific version. There is no fallback, no
 bundled defaults, and no network call on the daemon hot path.
 
 - **Setup (one-time):** the user supplies a version (e.g.
-  `v1.0.0`) during `velocity setup`. The daemon downloads
+  `v0.6.0`) during `velocity setup`. The daemon downloads
   `velocity-resources-<tag>.tar.gz` from the matching GitHub
   Release, verifies its checksum against `SHA256SUMS`, and
   extracts it under the velocity config dir. Setup fails — and

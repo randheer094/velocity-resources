@@ -1,4 +1,4 @@
-version: 1
+version: 0
 
 # Prompts are Go text/template files. velocity fetches this manifest on
 # startup, then fetches each `path` relative to this file. Each prompt
