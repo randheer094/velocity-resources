@@ -1,9 +1,13 @@
 # velocity-resources
 
-Starter Claude Code configurations for new projects. Drop the
-`.claude/` directory from a template into your repo root and Claude
-Code will pick up the conventions, skills, and pre-PR gates for that
-stack.
+Two things live here:
+
+1. **Claude Code starter templates** for new projects (`android/`,
+   `go/`) — drop the `.claude/` directory into your repo root.
+2. **Runtime prompts** consumed by the
+   [velocity](https://github.com/randheer094/velocity) daemon
+   (`prompts/`) — loaded from a release tarball at setup time so
+   prompt edits ship without a velocity rebuild.
 
 ## Templates
 
@@ -25,7 +29,7 @@ Each template ships with:
 - `skills/prepare-for-pr/SKILL.md` — the gate sequence to run
   before opening a PR.
 
-## Usage
+### Using a template
 
 Copy the `.claude/` directory from the template you want into the
 root of your project:
@@ -41,3 +45,111 @@ runbooks) lives in a `CLAUDE.md` at your repo root — the
 template's `.claude/CLAUDE.md` is purely a technical index and
 should stay that way. Tune `rules/*.md` and the pre-PR skill to
 match your stack.
+
+## Prompts
+
+Externalized LLM prompts and Jira / GitHub failure-comment
+templates for velocity. velocity loads `manifest.yaml` on startup,
+loads each referenced template, and renders them with Go's
+`text/template` at call sites.
+
+### Why
+
+- Prompts can be tuned without rebuilding velocity.
+- Prompt history lives in git — diffs, blame, and PR review apply.
+- Each velocity deployment pins to a release tag and updates on
+  its own schedule via an explicit user-driven command.
+
+### Layout
+
+```
+prompts/
+  manifest.yaml                    # index — id → path + placeholder schema
+  arch/plan.md                     # architect planning prompt
+  code/run.md                      # code runner (fresh sub-task) prompt
+  code/iterate.md                  # code iterate (existing PR) prompt
+  failure/jira.md                  # Jira comment for arch/code Run failures
+  failure/iterate_jira.md          # Jira comment for iterate failures
+  failure/iterate_pr.md            # GitHub PR comment for iterate failures
+```
+
+### Template format
+
+Templates use Go's [`text/template`](https://pkg.go.dev/text/template)
+syntax. Placeholders are referenced as `{{.FieldName}}`. The exact
+field set for each prompt is declared in `manifest.yaml` under
+`placeholders`.
+
+The renderer in velocity must:
+
+1. Load `manifest.yaml` from the extracted release tarball.
+2. For each entry, load the file at `path` (relative to
+   `manifest.yaml`).
+3. Parse with `text/template.New(id).Option("missingkey=error").Parse`.
+4. Cache the parsed template by `id`.
+5. On every render, pass a struct (or `map[string]any`) whose keys
+   match the placeholders for that prompt.
+
+`missingkey=error` is intentional — a typo in a placeholder name
+should fail loudly during render, not silently produce `<no value>`
+in a Jira comment.
+
+## Releases
+
+The `release` workflow (`.github/workflows/release.yml`) fires on
+any `v*` tag push. It validates that the tag's major version
+matches `prompts/manifest.yaml`'s `version:` field, then attaches
+three artifacts to a GitHub Release:
+
+- `velocity-resources-<tag>.tar.gz` — `go/`, `android/`, `prompts/`
+- `velocity-resources-<tag>.zip` — same trees
+- `SHA256SUMS` — checksums for both archives
+
+Cutting a release:
+
+```bash
+git tag v0.6.0
+git push origin v0.6.0
+```
+
+Tag major versus manifest `version:` is enforced — `v0.x.x`
+requires `version: 0`, `v1.x.x` requires `version: 1`, and so on.
+The manifest currently sits at `version: 0` — the schema is
+pre-stable, so breaking placeholder changes are allowed within
+the 0.x line. The first stable release will move both the
+manifest and the tag to `1`.
+
+### Velocity loading model
+
+velocity is pinned to one release tag at a time and downloads the
+artifact for that specific version. There is no fallback, no
+bundled defaults, and no network call on the daemon hot path.
+
+- **Setup (one-time):** the user supplies a version (e.g.
+  `v0.6.0`) during `velocity setup`. The daemon downloads
+  `velocity-resources-<tag>.tar.gz` from the matching GitHub
+  Release, verifies its checksum against `SHA256SUMS`, and
+  extracts it under the velocity config dir. Setup fails — and
+  refuses to write a partial config — if the download or
+  checksum verification fails. The user fixes the network or
+  picks a reachable version and re-runs setup.
+- **Daemon startup:** velocity reads prompts from the local
+  extracted copy. No network calls. If the cache is missing or
+  unreadable the daemon refuses to start and points the user at
+  setup.
+- **Updating:** a separate command (e.g.
+  `velocity update-prompts <tag>`) downloads, verifies, and
+  swaps in the requested release. Routine minor / patch bumps
+  within the current major are non-breaking. A major bump
+  (placeholder-schema change) usually requires a velocity binary
+  update too — the command should warn the user and require
+  explicit confirmation before applying it.
+
+## Editing prompts
+
+1. Edit the relevant `.md` file.
+2. If you change the placeholder set, update `manifest.yaml` in
+   the same commit and bump the major `version` — that gates
+   when downstream velocity deployments can pick the change up.
+3. Open a PR. After merge, cut a tagged release; deployments
+   pull it in via `velocity update-prompts <tag>`.

@@ -1,0 +1,41 @@
+version: 0
+
+# Prompts are Go text/template files. velocity fetches this manifest on
+# startup, then fetches each `path` relative to this file. Each prompt
+# is rendered with the listed placeholders before being sent to the LLM
+# (or posted as a Jira/PR comment).
+#
+# Adding a prompt: append an entry here, drop the template file at the
+# given path, and bump `version` if the placeholder schema changes in a
+# backward-incompatible way.
+
+prompts:
+  - id: arch_plan
+    path: arch/plan.md
+    description: Architect planning prompt — combined system + user message.
+    placeholders: [PlanBegin, PlanEnd, ParentKey, Requirement]
+
+  - id: code_run
+    path: code/run.md
+    description: Code runner prompt for a fresh sub-task.
+    placeholders: [IssueKey, Title, Description]
+
+  - id: code_iterate
+    path: code/iterate.md
+    description: Code iterate prompt for an existing PR branch.
+    placeholders: [IssueKey, Title, Description, BaseBranch, Extra]
+
+  - id: failure_jira
+    path: failure/jira.md
+    description: Standard Jira failure comment for arch.Run and code.Run.
+    placeholders: [Role, Stage, Message]
+
+  - id: failure_iterate_jira
+    path: failure/iterate_jira.md
+    description: Iterate-run Jira failure comment.
+    placeholders: [Reason, Stage, Message]
+
+  - id: failure_iterate_pr
+    path: failure/iterate_pr.md
+    description: Iterate-run GitHub PR failure comment.
+    placeholders: [Stage, Message]

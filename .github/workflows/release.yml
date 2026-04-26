@@ -1,0 +1,54 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify tag major matches manifest version
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          # Extract leading numeric component after the v prefix.
+          tag_major="${tag#v}"
+          tag_major="${tag_major%%.*}"
+          if ! [[ "$tag_major" =~ ^[0-9]+$ ]]; then
+            echo "::error::tag '${tag}' is not of the form v<major>[.<minor>[.<patch>]]"
+            exit 1
+          fi
+          manifest_version="$(yq '.version' prompts/manifest.yaml)"
+          if [ "$tag_major" != "$manifest_version" ]; then
+            echo "::error::tag major (${tag_major}) does not match prompts/manifest.yaml version (${manifest_version}). Bump the manifest version or retag."
+            exit 1
+          fi
+          echo "tag=${tag} major=${tag_major} manifest=${manifest_version} — OK"
+
+      - name: Build archives
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          base="velocity-resources-${tag}"
+          mkdir -p dist
+          tar -czf "dist/${base}.tar.gz" go android prompts
+          zip -qr "dist/${base}.zip" go android prompts
+          (cd dist && sha256sum "${base}.tar.gz" "${base}.zip" > SHA256SUMS)
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            --title "${GITHUB_REF_NAME}" \
+            --generate-notes \
+            dist/velocity-resources-${GITHUB_REF_NAME}.tar.gz \
+            dist/velocity-resources-${GITHUB_REF_NAME}.zip \
+            dist/SHA256SUMS
