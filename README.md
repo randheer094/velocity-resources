@@ -1,9 +1,13 @@
 # velocity-resources
 
-Starter Claude Code configurations for new projects. Drop the
-`.claude/` directory from a template into your repo root and Claude
-Code will pick up the conventions, skills, and pre-PR gates for that
-stack.
+Two things live here:
+
+1. **Claude Code starter templates** for new projects (`android/`,
+   `go/`) — drop the `.claude/` directory into your repo root.
+2. **Runtime prompts** consumed by the
+   [velocity](https://github.com/randheer094/velocity) daemon
+   (`prompts/`) — fetched on startup so prompt edits ship without a
+   velocity rebuild. See [`prompts/README.md`](./prompts/README.md).
 
 ## Templates
 
